@@ -1,0 +1,7 @@
+# atk68 — grant the logged-in user access to ATK / VXE keyboard HID interfaces.
+# uaccess hands access to the active local user (no group/chmod juggling).
+# Install: sudo cp packaging/60-atk68.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload && sudo udevadm trigger
+KERNEL=="hidraw*", ATTRS{idVendor}=="1a81", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="3554", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="373b", TAG+="uaccess"
