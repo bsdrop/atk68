@@ -1,5 +1,4 @@
-//! Simple single-byte keyboard settings (gtech). Each is `GET [0,0] -> value`
-//! and `SET [1, value]`, so they share one tiny implementation.
+//! Single-byte keyboard settings using shared GET/SET framing.
 
 use crate::device::Keyboard;
 use anyhow::{bail, Result};

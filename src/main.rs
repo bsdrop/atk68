@@ -1,8 +1,4 @@
-//! atk68 — offline, cross-platform configuration tool for the ATK68 keyboard.
-//!
-//! Talks to the keyboard's vendor HID interface directly (no cloud, no browser).
-//! Settings apply to RAM immediately and revert on replug; this tool never
-//! writes the keyboard's flash. Use `export`/`apply` to keep them locally.
+//! Offline configuration tool for ATK/VXE magnetic keyboards.
 
 mod actuation;
 mod config;
@@ -64,8 +60,24 @@ enum Cmd {
     Export { path: String },
     /// Apply a local profile file to the keyboard (RAM).
     Apply { path: String },
+    /// Commit RAM settings to the keyboard's flash or reset them.
+    Storage {
+        #[command(subcommand)]
+        action: StorageCmd,
+    },
     /// Debug: send raw hex (cmd + body) and dump the reply.
     Raw { hex: String },
+}
+
+#[derive(Subcommand)]
+enum StorageCmd {
+    /// Save current RAM settings to flash.
+    Save,
+    /// Factory-reset flash settings. Requires --yes.
+    Reset {
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Args)]
@@ -109,8 +121,6 @@ struct ActuationArgs {
 }
 
 fn main() -> Result<()> {
-    // Behave like a normal Unix tool when output is piped to e.g. `head`:
-    // exit quietly on a closed pipe instead of panicking.
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
@@ -153,6 +163,22 @@ fn main() -> Result<()> {
         Cmd::Apply { path } => {
             config::apply_file(&Keyboard::open()?, &path)?;
             println!("applied {path}");
+        }
+        Cmd::Storage { action } => {
+            let kb = Keyboard::open()?;
+            match action {
+                StorageCmd::Save => {
+                    kb.save_storage()?;
+                    println!("saved settings to flash");
+                }
+                StorageCmd::Reset { yes: true } => {
+                    kb.reset_storage()?;
+                    println!("reset settings in flash");
+                }
+                StorageCmd::Reset { yes: false } => {
+                    anyhow::bail!("storage reset clears saved settings; repeat with --yes")
+                }
+            }
         }
         Cmd::Raw { hex } => {
             let payload: Vec<u8> = hex
@@ -258,7 +284,6 @@ fn light_cmd(lang: Lang, a: LightArgs) -> Result<()> {
 fn rate_cmd(hz: Option<u32>) -> Result<()> {
     let kb = Keyboard::open()?;
     if let Some(target) = hz {
-        // Pick the index whose Hz is closest to the requested value.
         let index = device::REPORT_RATE_HZ
             .iter()
             .enumerate()

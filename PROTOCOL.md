@@ -91,9 +91,8 @@ spells out the exact offsets — always check both.
 **Profile** — `GetDeviceProfile 0x2b` body `[0,0]` → `[index]`;
 `SetDeviceProfile 0x2c` body `[1, index]`.
 
-**Flash (NOT used)** — `SaveStorage 0x21` would commit RAM → flash and
-`ResetStorage 0x22` factory-resets. This tool never sends them by design; they
-are listed only for completeness.
+**Flash storage** — `SaveStorage 0x21` commits RAM → flash and `ResetStorage 0x22`
+factory-resets. The CLI exposes these as `storage save` and `storage reset --yes`.
 
 ## The bundle (for future RE)
 

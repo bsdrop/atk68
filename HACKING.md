@@ -62,12 +62,11 @@ report rate, toggles, profile switch. Remaining:
 | SOCD / RS / OKS | `0x61/62`, `0x5f/60`, `0x63/64` | — | resolve `setRs/setSocd/setOks` in `j7t` |
 | Per-key RGB | `0x49` / `0x4a` | (custom light) | for effect `mode 10` custom |
 
-Do **not** add flash writes (`SaveStorage 0x21`, `ResetStorage 0x22`) or firmware
-commands — excluded by design.
+Do not add firmware commands — firmware flashing remains excluded.
 
 ## Safety rules
 
 - Never send bootloader/firmware commands (see `PROTOCOL.md`). The tool has none.
-- RAM writes are reversible (replug); `SaveStorage 0x21` persists to flash.
+- Normal writes are reversible (replug); `SaveStorage 0x21` persists to flash.
 - A report-rate change can re-enumerate USB — apply last, only if changed.
 - Always confirm a write with a GET readback.

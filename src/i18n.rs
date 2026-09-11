@@ -1,6 +1,4 @@
-//! Tiny i18n layer. The original web UI ships only Chinese; here every string
-//! exists in English, Korean, Japanese and Chinese. Lookup is a linear scan of
-//! a small table — trivially cheap for a CLI and easy to review/extend.
+//! Small English/Korean/Japanese/Chinese lookup table.
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Lang {

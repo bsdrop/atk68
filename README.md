@@ -6,8 +6,7 @@ built by reverse-engineering its HID protocol.
 
 - **No cloud, no server, no browser.** Talks to the keyboard's HID interface
   directly. Zero network code.
-- **RAM-only by design.** It never writes the keyboard's flash (no `SaveStorage`,
-  no firmware flashing) — see *Why no flash writes* below.
+- Settings normally apply to RAM. `storage save` can commit them to flash.
 - **Linux / macOS / Windows**, single binary (Rust + hidapi).
 - **i18n**: English, Korean, Japanese, Chinese (`--lang en|ko|ja|zh|auto`).
 
@@ -55,11 +54,16 @@ atk68 profile 1                         # switch active profile
 atk68 keyrt 0 1 5                       # per-key rapid trigger (row col value)
 atk68 export ~/.atk68.conf              # save settings to a local file
 atk68 apply  ~/.atk68.conf              # restore them in one shot
+atk68 storage save                       # commit current RAM settings to flash
+atk68 storage reset --yes                # factory-reset saved settings
 atk68 raw "45 00 00"                    # debug: send cmd+body, dump reply
 ```
 
-All changes apply to **RAM** and revert on replug. `--lang` works on every
-command, e.g. `atk68 status --lang ko`.
+Normal changes apply to **RAM** and revert on replug; use `storage save` to
+persist them. `--lang` works on every command, e.g. `atk68 status --lang ko`.
+
+Profiles can also include toggles, for example `tweak.rt = on` and
+`tweak.low-latency = on`. `export` writes all supported tweak values.
 
 ### Surviving flash wipes / glitches
 
@@ -102,12 +106,11 @@ family). It recognises a list of models for a friendly name and correct mm
 scaling (`device::MODELS`); other keyboards on a known vendor id + vendor usage
 page still work with defaults.
 
-## Why no flash writes
+## Flash storage
 
-The keyboard's flash occasionally loses its saved profile, and flash has limited
-write cycles, so this tool stays in RAM and relies on `export`/`apply` for
-persistence instead. Firmware flashing is also deliberately excluded: those
-images are encrypted + signed and a bad write bricks the device.
+`storage save` sends `SaveStorage (0x21)` and commits the current RAM settings.
+Flash has limited write cycles, so use it only when needed. `storage reset --yes`
+sends `ResetStorage (0x22)`. Firmware flashing remains excluded.
 
 ## Status
 

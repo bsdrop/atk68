@@ -1,13 +1,4 @@
-//! HID transport + command layer for the ATK68 (gtech controller `j7t`).
-//!
-//! Verified on real hardware: the keyboard speaks on its vendor interface
-//! (usage page 0xFF01) using **output reports with report-id 0** and replies
-//! with input reports. No feature reports, no checksum, and — crucially — no
-//! browser/WebHID and no udev rule are required to reach it.
-//!
-//! Frame (64 bytes): `[commandId, length, resultCode/selector, data…]`.
-//! A reply echoes `commandId` in byte 0, carries `resultCode` in byte 2, and
-//! its data starts at byte 3. Command ids are the firmware's `UTt` enum.
+//! HID transport and command layer for the gtech keyboard controller.
 
 use anyhow::{anyhow, bail, Context, Result};
 use hidapi::{HidApi, HidDevice};
@@ -16,11 +7,7 @@ pub const KNOWN_VIDS: &[u16] = &[0x1A81, 0x3554, 0x373B];
 const VENDOR_USAGE_MIN: u16 = 0xFF00;
 pub const REPORT_LEN: usize = 64;
 
-/// Known magnetic-switch keyboards that use the same `gtech` controller as the
-/// ATK68. `step` is the actuation/travel resolution in mm. Only the ATK68 is
-/// hardware-verified; the rest share the controller and should work, but are
-/// listed mainly for a friendly name + correct mm scaling. Unlisted devices
-/// that match a known VID + vendor usage page still work with defaults.
+/// Known models and their actuation resolution in mm.
 pub struct Model {
     pub vid: u16,
     pub pid: u16,
@@ -57,8 +44,8 @@ pub fn model_of(vid: u16, pid: u16) -> Option<&'static Model> {
 #[allow(dead_code)]
 pub mod op {
     pub const GET_KEYBOARD_INFO: u8 = 0x12;
-    // 0x21 SaveStorage / 0x22 ResetStorage write flash — intentionally NOT
-    // exposed (the tool is RAM-only; see README). Listed for the protocol map.
+    pub const SAVE_STORAGE: u8 = 0x21;
+    pub const RESET_STORAGE: u8 = 0x22;
     pub const GET_REPORT_RATE: u8 = 0x23;
     pub const SET_REPORT_RATE: u8 = 0x24;
     pub const GET_DEVICE_PROFILE: u8 = 0x2B;
@@ -81,7 +68,6 @@ pub struct Found {
     pub usage_page: u16,
 }
 
-/// Enumerate attached ATK/VXE vendor config interfaces.
 pub fn discover(api: &HidApi) -> Vec<Found> {
     api.device_list()
         .filter(|d| KNOWN_VIDS.contains(&d.vendor_id()) && d.usage_page() >= VENDOR_USAGE_MIN)
@@ -97,9 +83,7 @@ pub fn discover(api: &HidApi) -> Vec<Found> {
 
 pub struct Keyboard {
     dev: HidDevice,
-    /// Friendly model name (falls back to the USB product string).
     pub name: String,
-    /// Actuation/travel resolution in mm for this model.
     pub travel_step: f32,
 }
 
@@ -114,16 +98,12 @@ impl Keyboard {
         let name = model.map(|m| m.name.to_string()).unwrap_or(target.product.clone());
         let travel_step = model.map(|m| m.step).unwrap_or(DEFAULT_STEP);
         let cpath = std::ffi::CString::new(target.path.clone())?;
-        // The device was found (enumeration reads sysfs), so an open failure here
-        // is almost always a permission problem on the hidraw node.
         api.open_path(&cpath)
             .map(|dev| Keyboard { dev, name, travel_step })
             .map_err(|e| anyhow!(permission_hint(&target.path, e)))
     }
 
-    /// Send `[cmd, body…]` as a report-id-0 output report and return the
-    /// matching reply (input report whose byte 0 equals `cmd`). `body` is the
-    /// bytes from index 1 on, i.e. `[length, selector/data…]`.
+    /// Send a command and return its matching reply.
     pub fn exchange(&self, cmd: u8, body: &[u8]) -> Result<[u8; REPORT_LEN]> {
         if body.len() + 2 > REPORT_LEN {
             bail!("command body too long");
@@ -133,7 +113,6 @@ impl Keyboard {
         out[2..2 + body.len()].copy_from_slice(body);
         self.dev.write(&out).context("hid write")?;
 
-        // Read replies, skipping unsolicited async reports, until ours arrives.
         for _ in 0..16 {
             let mut reply = [0u8; REPORT_LEN];
             let n = self.dev.read_timeout(&mut reply, 1000).context("hid read")?;
@@ -150,7 +129,6 @@ impl Keyboard {
         bail!("no reply for command 0x{cmd:02x}")
     }
 
-    /// The data region of a reply (`length` bytes starting after the header).
     pub fn data(reply: &[u8; REPORT_LEN]) -> &[u8] {
         let len = (reply[1] as usize).min(REPORT_LEN - 3);
         &reply[3..3 + len]
@@ -166,8 +144,6 @@ impl Keyboard {
         })
     }
 
-    /// First data byte of a simple GET, or 0 on empty/error. Used for the
-    /// single-value reads (active profile, report-rate index).
     fn get_byte(&self, cmd: u8) -> Result<u8> {
         let r = self.exchange(cmd, &[0, 0])?;
         Ok(Self::data(&r).first().copied().unwrap_or(0))
@@ -182,8 +158,6 @@ impl Keyboard {
         Ok(())
     }
 
-    /// Per-key rapid-trigger value (keyed by matrix row/col). Errors for matrix
-    /// positions that don't exist on this layout.
     pub fn key_rt(&self, row: u8, col: u8) -> Result<u8> {
         let r = self.exchange(op::GET_ONE_FAST_TRIGGER, &[2, row, col])?;
         if r[2] != 0 {
@@ -200,7 +174,6 @@ impl Keyboard {
         Ok(())
     }
 
-    /// Report-rate index (see `REPORT_RATE_HZ`).
     pub fn report_rate(&self) -> Result<u8> {
         self.get_byte(op::GET_REPORT_RATE)
     }
@@ -210,12 +183,21 @@ impl Keyboard {
         Ok(())
     }
 
-    /// Debug exchange: raw bytes after the report id, used by `atk68 raw`.
     pub fn raw(&self, payload: &[u8]) -> Result<[u8; REPORT_LEN]> {
         if payload.is_empty() {
             bail!("empty payload");
         }
         self.exchange(payload[0], &payload[1..])
+    }
+
+    pub fn save_storage(&self) -> Result<()> {
+        self.exchange(op::SAVE_STORAGE, &[0, 0])?;
+        Ok(())
+    }
+
+    pub fn reset_storage(&self) -> Result<()> {
+        self.exchange(op::RESET_STORAGE, &[0, 0])?;
+        Ok(())
     }
 }
 

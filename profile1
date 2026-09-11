@@ -1,0 +1,13 @@
+# atk68 profile — apply with: atk68 apply <file>
+light.enabled = true
+light.effect = 5
+light.brightness = 1
+light.speed = 0
+light.color = #FFE4E1
+light.rainbow = false
+actuation.point_mm = 0.1
+actuation.press_mm = 0.1
+actuation.release_mm = 0.1
+rate.hz = 4000
+tweak.rt = on
+tweak.low-latency = on
