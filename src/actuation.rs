@@ -28,9 +28,6 @@ pub fn raw(mm: f32, step: f32) -> u8 {
 
 pub fn get(kb: &Keyboard) -> Result<Actuation> {
     let r = kb.exchange(op::GET_ALL_ACTUATION, &[0, 0])?;
-    if r[2] != 0 {
-        bail!("keyboard returned error 0x{:02x} reading actuation", r[2]);
-    }
     let d = Keyboard::data(&r);
     if d.len() < 3 {
         bail!("short actuation reply ({} bytes)", d.len());

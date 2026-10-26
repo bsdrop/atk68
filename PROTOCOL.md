@@ -81,7 +81,7 @@ spells out the exact offsets — always check both.
 - GET body `[0,0]`; reply data `[index]`. SET body `[len=1, index]`.
 - index 0–6 = 125/250/500/1000/2000/4000/8000 Hz.
 - ⚠️ A real change can re-enumerate the USB device (the `hidraw` handle breaks);
-  apply it last and only if changed (see `config::Config::apply`).
+  apply it last and only if changed (see `config::Profile::apply`).
 
 **Per-key rapid trigger** — `GetOneFastTrigger 0x54` / `SetOneFastTrigger 0x55`
 (class `z7t`): GET body `[2, row, col]` → reply data `[trigger]`; SET body

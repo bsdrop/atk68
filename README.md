@@ -63,7 +63,10 @@ Normal changes apply to **RAM** and revert on replug; use `storage save` to
 persist them. `--lang` works on every command, e.g. `atk68 status --lang ko`.
 
 Profiles can also include toggles, for example `tweak.rt = on` and
-`tweak.low-latency = on`. `export` writes all supported tweak values.
+`tweak.low-latency = on`. A profile may contain only the settings you want to
+change; `apply` writes those settings and leaves other sections alone. Invalid
+keys or values (such as `ture`) stop the apply before any keyboard settings are
+written. `export` writes all supported tweak values.
 
 ### Surviving flash wipes / glitches
 

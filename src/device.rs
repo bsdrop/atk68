@@ -16,21 +16,96 @@ pub struct Model {
 }
 
 pub const MODELS: &[Model] = &[
-    Model { vid: 0x1A81, pid: 0x207E, name: "ATK68", step: 0.1 }, // verified
-    Model { vid: 0x1A81, pid: 0x2075, name: "ATK75 G", step: 0.1 },
-    Model { vid: 0x1A81, pid: 0x2082, name: "ATK75 L", step: 0.1 },
-    Model { vid: 0x1A81, pid: 0x2083, name: "ATK68 L", step: 0.02 },
-    Model { vid: 0x373B, pid: 0x1005, name: "ATK68 Air", step: 0.02 },
-    Model { vid: 0x373B, pid: 0x2002, name: "ATK68 V2 Pro", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x2029, name: "ATK68 V2", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x1259, name: "ATK68 V4", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x21B8, name: "ATK68 V4", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x21C6, name: "ATK68 RX", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x2169, name: "ATK EDGE75", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x21BC, name: "EDGE 63HE Ultimate", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x2188, name: "ATK75 V2", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x21C9, name: "ATK RS7 Turbo", step: 0.1 },
-    Model { vid: 0x373B, pid: 0x1177, name: "ATK x QK Hex80", step: 0.1 },
+    Model {
+        vid: 0x1A81,
+        pid: 0x207E,
+        name: "ATK68",
+        step: 0.1,
+    }, // verified
+    Model {
+        vid: 0x1A81,
+        pid: 0x2075,
+        name: "ATK75 G",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x1A81,
+        pid: 0x2082,
+        name: "ATK75 L",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x1A81,
+        pid: 0x2083,
+        name: "ATK68 L",
+        step: 0.02,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x1005,
+        name: "ATK68 Air",
+        step: 0.02,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x2002,
+        name: "ATK68 V2 Pro",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x2029,
+        name: "ATK68 V2",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x1259,
+        name: "ATK68 V4",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x21B8,
+        name: "ATK68 V4",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x21C6,
+        name: "ATK68 RX",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x2169,
+        name: "ATK EDGE75",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x21BC,
+        name: "EDGE 63HE Ultimate",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x2188,
+        name: "ATK75 V2",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x21C9,
+        name: "ATK RS7 Turbo",
+        step: 0.1,
+    },
+    Model {
+        vid: 0x373B,
+        pid: 0x1177,
+        name: "ATK x QK Hex80",
+        step: 0.1,
+    },
 ];
 
 const DEFAULT_STEP: f32 = 0.1;
@@ -95,16 +170,28 @@ impl Keyboard {
             .next()
             .ok_or_else(|| anyhow!("no ATK/VXE keyboard found (is it plugged in?)"))?;
         let model = model_of(target.vid, target.pid);
-        let name = model.map(|m| m.name.to_string()).unwrap_or(target.product.clone());
+        let name = model
+            .map(|m| m.name.to_string())
+            .unwrap_or(target.product.clone());
         let travel_step = model.map(|m| m.step).unwrap_or(DEFAULT_STEP);
         let cpath = std::ffi::CString::new(target.path.clone())?;
         api.open_path(&cpath)
-            .map(|dev| Keyboard { dev, name, travel_step })
+            .map(|dev| Keyboard {
+                dev,
+                name,
+                travel_step,
+            })
             .map_err(|e| anyhow!(permission_hint(&target.path, e)))
     }
 
-    /// Send a command and return its matching reply.
+    /// Send a command and return its validated matching reply.
     pub fn exchange(&self, cmd: u8, body: &[u8]) -> Result<[u8; REPORT_LEN]> {
+        let (reply, received) = self.exchange_unchecked(cmd, body)?;
+        validate_reply(cmd, &reply, received)?;
+        Ok(reply)
+    }
+
+    fn exchange_unchecked(&self, cmd: u8, body: &[u8]) -> Result<([u8; REPORT_LEN], usize)> {
         if body.len() + 2 > REPORT_LEN {
             bail!("command body too long");
         }
@@ -115,12 +202,15 @@ impl Keyboard {
 
         for _ in 0..16 {
             let mut reply = [0u8; REPORT_LEN];
-            let n = self.dev.read_timeout(&mut reply, 1000).context("hid read")?;
+            let n = self
+                .dev
+                .read_timeout(&mut reply, 1000)
+                .context("hid read")?;
             if n == 0 {
                 break;
             }
             if reply[0] == cmd {
-                return Ok(reply);
+                return Ok((reply, n));
             }
             if reply[0] != op::DATA_REPORTED && reply[0] != 0 {
                 // A reply for a different command id — not expected here.
@@ -137,6 +227,9 @@ impl Keyboard {
     pub fn info(&self) -> Result<Info> {
         let r = self.exchange(op::GET_KEYBOARD_INFO, &[0, 0])?;
         let d = Self::data(&r);
+        if d.len() < 8 {
+            bail!("short keyboard info reply ({} bytes)", d.len());
+        }
         Ok(Info {
             vid: u16::from_be_bytes([d[0], d[1]]),
             pid: u16::from_be_bytes([d[2], d[3]]),
@@ -146,7 +239,7 @@ impl Keyboard {
 
     fn get_byte(&self, cmd: u8) -> Result<u8> {
         let r = self.exchange(cmd, &[0, 0])?;
-        Ok(Self::data(&r).first().copied().unwrap_or(0))
+        first_byte(cmd, &r)
     }
 
     pub fn profile(&self) -> Result<u8> {
@@ -160,17 +253,11 @@ impl Keyboard {
 
     pub fn key_rt(&self, row: u8, col: u8) -> Result<u8> {
         let r = self.exchange(op::GET_ONE_FAST_TRIGGER, &[2, row, col])?;
-        if r[2] != 0 {
-            bail!("no key at row {row}, col {col}");
-        }
-        Ok(Self::data(&r).first().copied().unwrap_or(0))
+        first_byte(op::GET_ONE_FAST_TRIGGER, &r)
     }
 
     pub fn set_key_rt(&self, row: u8, col: u8, value: u8) -> Result<()> {
-        let r = self.exchange(op::SET_ONE_FAST_TRIGGER, &[3, row, col, value])?;
-        if r[2] != 0 {
-            bail!("could not set rapid trigger at row {row}, col {col}");
-        }
+        self.exchange(op::SET_ONE_FAST_TRIGGER, &[3, row, col, value])?;
         Ok(())
     }
 
@@ -187,7 +274,9 @@ impl Keyboard {
         if payload.is_empty() {
             bail!("empty payload");
         }
-        self.exchange(payload[0], &payload[1..])
+        // The debug command must expose error replies as raw bytes too.
+        self.exchange_unchecked(payload[0], &payload[1..])
+            .map(|(reply, _)| reply)
     }
 
     pub fn save_storage(&self) -> Result<()> {
@@ -201,6 +290,30 @@ impl Keyboard {
     }
 }
 
+fn validate_reply(cmd: u8, reply: &[u8; REPORT_LEN], received: usize) -> Result<()> {
+    if received < 3 {
+        bail!("short reply for command 0x{cmd:02x} ({received} bytes)");
+    }
+    if reply[2] != 0 {
+        bail!(
+            "keyboard returned error 0x{:02x} for command 0x{cmd:02x}",
+            reply[2]
+        );
+    }
+    let declared = reply[1] as usize;
+    if declared > REPORT_LEN - 3 || received < declared + 3 {
+        bail!("truncated reply for command 0x{cmd:02x} (declared {declared} data bytes, received {received} bytes)");
+    }
+    Ok(())
+}
+
+pub fn first_byte(cmd: u8, reply: &[u8; REPORT_LEN]) -> Result<u8> {
+    Keyboard::data(reply)
+        .first()
+        .copied()
+        .ok_or_else(|| anyhow!("empty data in reply for command 0x{cmd:02x}"))
+}
+
 pub struct Info {
     pub vid: u16,
     pub pid: u16,
@@ -209,6 +322,15 @@ pub struct Info {
 
 /// Report-rate index → polling rate in Hz (firmware `sHt` order).
 pub const REPORT_RATE_HZ: &[u32] = &[125, 250, 500, 1000, 2000, 4000, 8000];
+
+pub fn nearest_rate(hz: u32) -> u8 {
+    REPORT_RATE_HZ
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, rate)| rate.abs_diff(hz))
+        .map(|(index, _)| index as u8)
+        .expect("report rates are defined")
+}
 
 /// Build a helpful message when the device is present but cannot be opened.
 /// On Linux a normal user can only open a vendor `hidraw` node with one-time
@@ -229,4 +351,28 @@ fn permission_hint(path: &str, err: hidapi::HidError) -> String {
          • or just run it elevated:\n      sudo {exe} …\n  \
          • or keep a udev rule (see README.md → Linux permissions)"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_error_and_truncated_replies() {
+        let mut reply = [0; REPORT_LEN];
+        reply[0] = op::GET_REPORT_RATE;
+        reply[1] = 1;
+        reply[2] = 0xff;
+        assert!(validate_reply(op::GET_REPORT_RATE, &reply, 4).is_err());
+
+        reply[2] = 0;
+        assert!(validate_reply(op::GET_REPORT_RATE, &reply, 3).is_err());
+        assert!(validate_reply(op::GET_REPORT_RATE, &reply, 4).is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_byte_data() {
+        let reply = [0; REPORT_LEN];
+        assert!(first_byte(op::GET_REPORT_RATE, &reply).is_err());
+    }
 }

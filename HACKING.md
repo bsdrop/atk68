@@ -9,9 +9,10 @@ How to add the remaining features without re-reverse-engineering. Read
 src/device.rs   transport + opcode map + Keyboard::exchange (low-level send/recv)
 src/light.rs    one feature module: typed struct + get/set + encode/decode
 src/actuation.rs same shape, for actuation/RT
-src/config.rs   export/apply a local profile (offline flash-wipe recovery)
-src/i18n.rs     en/ko/ja/zh strings + effect names
-src/main.rs     clap CLI; one subcommand per feature
+src/config.rs   parse partial profiles; export/apply settings (offline recovery)
+src/i18n.rs     typed en/ko/ja/zh CLI text + effect names
+src/cli.rs      clap commands and output; one subcommand per feature
+src/main.rs     process entry point
 ```
 
 Each feature is a small self-contained module mirroring `light.rs`. Adding one
@@ -36,7 +37,7 @@ does not require understanding the others.
 5. **Write the module** (copy `actuation.rs`): a typed struct, `get`, `set`
    (build the body exactly as the bundle's `create` does), plus any unit
    conversion. Use `Keyboard::exchange` and `Keyboard::data`.
-6. **Wire the CLI** in `main.rs` (subcommand + handler) and add `i18n` strings.
+6. **Wire the CLI** in `cli.rs` (subcommand + handler) and add typed `i18n::Text` entries for new output.
 7. **Verify by readback** — set a value, GET it back, compare bytes. Physically
    check if you can. Writes go to RAM and revert on replug, so this is safe.
 
@@ -45,7 +46,7 @@ does not require understanding the others.
 `getAllActuation` → `C7t.get()` (cmd `0x43`, no body) → reply data `[point,down,
 up]`. `setAllActuation` → `C7t.create({point,down,up})` (cmd `0x42`, length 3,
 sets bytes 2/3/4). That became `src/actuation.rs` (`get`/`set` + `mm`/`raw`
-helpers) and `Cmd::Actuation` in `main.rs`. Verified: `actuation --point 1.5` →
+helpers) and `Cmd::Actuation` in `cli.rs`. Verified: `actuation --point 1.5` →
 `raw "43 00 00"` showed byte 3 = `0x0f`.
 
 ## Remaining features (opcodes ready)

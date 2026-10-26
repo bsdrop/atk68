@@ -10,15 +10,29 @@ use anyhow::{bail, Result};
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
     pub enabled: bool,
-    pub mode: u8,            // effect id (see i18n::EFFECTS)
-    pub brightness: u8,      // 0..=BRIGHTNESS_MAX
-    pub speed: u8,           // 0..=SPEED_MAX
+    pub mode: u8,       // effect id (see Lang::effect_name)
+    pub brightness: u8, // 0..=BRIGHTNESS_MAX
+    pub speed: u8,      // 0..=SPEED_MAX
     pub rgb: (u8, u8, u8),
-    pub colorful: bool,      // rainbow / per-LED multicolour flag
+    pub colorful: bool, // rainbow / per-LED multicolour flag
 }
 
 pub const BRIGHTNESS_MAX: u8 = 8;
 pub const SPEED_MAX: u8 = 4;
+
+pub fn validate_brightness(value: u8) -> Result<u8> {
+    if value > BRIGHTNESS_MAX {
+        bail!("brightness must be between 0 and {BRIGHTNESS_MAX}");
+    }
+    Ok(value)
+}
+
+pub fn validate_speed(value: u8) -> Result<u8> {
+    if value > SPEED_MAX {
+        bail!("speed must be between 0 and {SPEED_MAX}");
+    }
+    Ok(value)
+}
 
 impl Light {
     fn decode(d: &[u8]) -> Result<Light> {
@@ -37,7 +51,7 @@ impl Light {
 
     fn body(&self) -> [u8; 10] {
         [
-            8,                    // length
+            8, // length
             self.enabled as u8,
             self.mode,
             self.brightness,
@@ -54,9 +68,6 @@ impl Light {
 /// Read the current main-zone lighting (light type 0).
 pub fn get(kb: &Keyboard) -> Result<Light> {
     let r = kb.exchange(op::GET_LIGHT, &[0, 0])?;
-    if r[2] != 0 {
-        bail!("keyboard returned error 0x{:02x} reading lighting", r[2]);
-    }
     Light::decode(Keyboard::data(&r))
 }
 
@@ -78,7 +89,11 @@ pub fn parse_rgb(s: &str) -> Result<(u8, u8, u8)> {
     }
     let p: Vec<&str> = s.split(',').collect();
     if p.len() == 3 {
-        return Ok((p[0].trim().parse()?, p[1].trim().parse()?, p[2].trim().parse()?));
+        return Ok((
+            p[0].trim().parse()?,
+            p[1].trim().parse()?,
+            p[2].trim().parse()?,
+        ));
     }
     bail!("color must be #RRGGBB or r,g,b")
 }
